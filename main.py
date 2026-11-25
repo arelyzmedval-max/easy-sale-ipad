@@ -1,579 +1,142 @@
-import os
-from flask import Flask, jsonify, render_template_string, request, session
-from database import Database
-from views.login import LoginView
-from views.inicio import InicioView
-from views.ventas import VentasView
-from views.inventario import InventarioView
-from views.historial import HistorialView
-from views.reportes import ReportesView
-from views.usuarios import UsuariosView
-from views.caja import CajaView
-from views.configuracion import ConfiguracionView
-
-
-app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "easy-sale-ipad-secret-key")
-
-db = Database()
-
-
-def _crear_vista(index, usuario_actual):
-    if index == 0:
-        return InicioView(db, usuario_actual)
-    if index == 1:
-        return VentasView(db, usuario_actual)
-    if index == 2:
-        return InventarioView(db)
-    if index == 3:
-        return HistorialView(db)
-    if index == 4:
-        return ReportesView(db)
-    if index == 5:
-        return UsuariosView(db)
-    if index == 6:
-        return CajaView(db, usuario_actual)
-    if index == 7:
-        return InicioView(db, usuario_actual)
-    if index == 8:
-        return ConfiguracionView(db)
-    return InicioView(db, usuario_actual)
-
-
-def _render_app_shell(usuario_actual=None):
-    secciones = [
-        {"index": 0, "label": "Inicio"},
-        {"index": 1, "label": "Ventas"},
-        {"index": 2, "label": "Inventario"},
-        {"index": 3, "label": "Historial"},
-        {"index": 4, "label": "Reportes"},
-        {"index": 5, "label": "Usuarios"},
-        {"index": 6, "label": "Caja"},
-        {"index": 7, "label": "Clientes"},
-        {"index": 8, "label": "Configuración"},
-    ]
-    usuario_json = usuario_actual if usuario_actual else {}
-
-    html = """<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Easy Sale - Punto de Venta</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-      background: #f3f4f6;
-      color: #111827;
-    }
-    .header {
-      background: #1e3a8a;
-      color: #ffffff;
-      padding: 10px 16px;
-      display: -webkit-flex;
-      display: flex;
-      -webkit-justify-content: space-between;
-      justify-content: space-between;
-      -webkit-align-items: center;
-      align-items: center;
-    }
-    .header-title {
-      font-size: 16px;
-      font-weight: 700;
-    }
-    .header-user {
-      display: -webkit-flex;
-      display: flex;
-      -webkit-align-items: center;
-      align-items: center;
-      font-size: 14px;
-    }
-    .btn-logout {
-      margin-left: 12px;
-      background: #dc2626;
-      color: #ffffff;
-      border: none;
-      border-radius: 6px;
-      padding: 6px 10px;
-      font-size: 13px;
-      font-weight: 600;
-    }
-    .layout {
-      display: -webkit-flex;
-      display: flex;
-      min-height: calc(100vh - 48px);
-    }
-    .sidebar {
-      width: 150px;
-      background: #ffffff;
-      border-right: 1px solid #e5e7eb;
-      padding: 8px 0;
-      -webkit-flex-shrink: 0;
-      flex-shrink: 0;
-    }
-    .nav-btn {
-      display: block;
-      width: 100%;
-      text-align: left;
-      background: transparent;
-      border: none;
-      padding: 12px 14px;
-      font-size: 14px;
-      font-weight: 600;
-      color: #374151;
-    }
-    .nav-btn.active {
-      background: #dbeafe;
-      color: #1d4ed8;
-      border-left: 4px solid #1d4ed8;
-    }
-    .main-content {
-      -webkit-flex: 1;
-      flex: 1;
-      padding: 20px;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .box {
-      background: #ffffff;
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-      max-width: 1040px;
-    }
-    .section-header {
-      margin-bottom: 16px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid #e5e7eb;
-    }
-    .section-title {
-      margin: 0 0 4px 0;
-      font-size: 20px;
-      font-weight: 700;
-      color: #111827;
-    }
-    .section-subtitle {
-      margin: 0;
-      font-size: 13px;
-      color: #6b7280;
-    }
-    .cards-grid {
-      display: -webkit-flex;
-      display: flex;
-      -webkit-flex-wrap: wrap;
-      flex-wrap: wrap;
-      margin: 0 -6px 16px -6px;
-    }
-    .metric-card {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 14px 16px;
-      margin: 6px;
-      min-width: 190px;
-      -webkit-flex: 1;
-      flex: 1;
-    }
-    .metric-label {
-      font-size: 13px;
-      font-weight: 600;
-      color: #4b5563;
-      margin-bottom: 6px;
-    }
-    .metric-value {
-      font-size: 22px;
-      font-weight: 700;
-      color: #1d4ed8;
-    }
-    .metric-value.blue { color: #2563eb; }
-    .metric-value.orange { color: #d97706; }
-    .metric-value.red { color: #dc2626; }
-    .metric-value.green { color: #15803d; }
-
-    .alert-card {
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 12px 14px;
-      margin-bottom: 8px;
-      display: -webkit-flex;
-      display: flex;
-      -webkit-justify-content: space-between;
-      justify-content: space-between;
-      -webkit-align-items: center;
-      align-items: center;
-    }
-    .alert-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: #111827;
-      margin-bottom: 2px;
-    }
-    .alert-sub {
-      font-size: 12px;
-      color: #6b7280;
-    }
-    .badge-danger {
-      background: #fee2e2;
-      color: #991b1b;
-      font-size: 12px;
-      font-weight: 700;
-      padding: 5px 10px;
-      border-radius: 999px;
-      white-space: nowrap;
-      margin-left: 10px;
-    }
-    .badge-info {
-      background: #dbeafe;
-      color: #1e40af;
-      font-size: 12px;
-      font-weight: 700;
-      padding: 4px 8px;
-      border-radius: 999px;
-      white-space: nowrap;
-    }
-    .data-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 8px;
-      margin-bottom: 16px;
-      font-size: 13px;
-    }
-    .data-table th {
-      background: #f1f5f9;
-      color: #334155;
-      font-weight: 700;
-      text-align: left;
-      padding: 10px 12px;
-      border-bottom: 2px solid #cbd5e1;
-    }
-    .data-table td {
-      padding: 10px 12px;
-      border-bottom: 1px solid #e5e7eb;
-      color: #1f2937;
-      vertical-align: top;
-    }
-    .kv-list {
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      overflow: hidden;
-      margin-bottom: 14px;
-    }
-    .kv-row {
-      display: -webkit-flex;
-      display: flex;
-      -webkit-justify-content: space-between;
-      justify-content: space-between;
-      padding: 10px 14px;
-      border-bottom: 1px solid #f1f5f9;
-      font-size: 13px;
-    }
-    .kv-row:last-child { border-bottom: none; }
-    .kv-key { font-weight: 700; color: #374151; margin-right: 12px; }
-    .kv-val { color: #111827; text-align: right; word-break: break-word; }
-    .empty-msg {
-      padding: 14px;
-      background: #f9fafb;
-      border: 1px dashed #d1d5db;
-      border-radius: 8px;
-      color: #4b5563;
-      font-size: 13px;
-      margin-bottom: 12px;
-    }
-    .login-box {
-      max-width: 380px;
-      margin: 40px auto;
-      background: #ffffff;
-      padding: 24px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
-    }
-    .field {
-      margin-bottom: 12px;
-    }
-    .field label {
-      display: block;
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-    .field input {
-      width: 100%;
-      padding: 9px 10px;
-      font-size: 15px;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-    }
-    .btn-primary {
-      background: #1d4ed8;
-      color: #ffffff;
-      border: none;
-      border-radius: 6px;
-      padding: 10px 16px;
-      font-size: 14px;
-      font-weight: 700;
-    }
-    .error-msg {
-      color: #dc2626;
-      font-size: 13px;
-      margin-bottom: 10px;
-      min-height: 18px;
-    }
-  </style>
-</head>
-<body>
-  <div id="app-root"></div>
-
-  <script>
-    var usuarioActual = {{ usuario_json | tojson }};
-    var secciones = {{ secciones | tojson }};
-    var vistaActual = 0;
-
-    function escapeHtml(val) {
-      if (val === null || val === undefined) return "";
-      return String(val)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    }
-
-    function formatLabel(key) {
-      return String(key || "")
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
-    }
-
-    function formatValue(val) {
-      if (val === null || val === undefined || val === "") return "-";
-      if (typeof val === "boolean") return val ? "Sí" : "No";
-      if (typeof val === "object") {
-        if (Array.isArray(val)) return val.length + " elemento(s)";
-        return Object.keys(val).map(function (k) {
-          return formatLabel(k) + ": " + formatValue(val[k]);
-        }).join(" | ");
-      }
-      return escapeHtml(val);
-    }
-
-    function renderTablaArray(items) {
-      if (!Array.isArray(items) || items.length === 0) {
-        return '<div class="empty-msg">No hay registros disponibles para mostrar.</div>';
-      }
-      if (typeof items[0] !== "object" || items[0] === null) {
-        var listHtml = '<ul style="margin:0 0 14px 0;padding-left:20px;">';
-        for (var i = 0; i < items.length; i++) {
-          listHtml += '<li style="margin-bottom:4px;">' + escapeHtml(items[i]) + '</li>';
-        }
-        return listHtml + '</ul>';
-      }
-
-      var cols = [];
-      for (var r = 0; r < items.length; r++) {
-        var row = items[r];
-        if (row && typeof row === "object") {
-          for (var k in row) {
-            if (Object.prototype.hasOwnProperty.call(row, k) && cols.indexOf(k) === -1) {
-              cols.push(k);
-            }
-          }
-        }
-      }
-
-      var html = '<div style="overflow-x:auto;"><table class="data-table"><thead><tr>';
-      for (var c = 0; c < cols.length; c++) {
-        html += '<th>' + escapeHtml(formatLabel(cols[c])) + '</th>';
-      }
-      html += '</tr></thead><tbody>';
-
-      for (var i = 0; i < items.length; i++) {
-        var item = items[i] || {};
-        html += '<tr>';
-        for (var c = 0; c < cols.length; c++) {
-          var colName = cols[c];
-          html += '<td>' + formatValue(item[colName]) + '</td>';
-        }
-        html += '</tr>';
-      }
-      html += '</tbody></table></div>';
-      return html;
-    }
-
-    function renderDiccionario(obj) {
-      if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
-        return '<div class="empty-msg">' + formatValue(obj) + '</div>';
-      }
-      var keys = Object.keys(obj);
-      if (keys.length === 0) {
-        return '<div class="empty-msg">Sin información adicional.</div>';
-      }
-
-      var html = "";
-      var simpleKeys = [];
-
-      for (var i = 0; i < keys.length; i++) {
-        var k = keys[i];
-        var v = obj[k];
-        if (Array.isArray(v)) {
-          html += '<h4 style="margin:14px 0 6px 0;font-size:15px;">' + escapeHtml(formatLabel(k)) + '</h4>';
-          html += renderTablaArray(v);
-        } else if (v && typeof v === "object") {
-          html += '<h4 style="margin:14px 0 6px 0;font-size:15px;">' + escapeHtml(formatLabel(k)) + '</h4>';
-          html += renderDiccionario(v);
-        } else {
-          simpleKeys.push(k);
-        }
-      }
-
-      if (simpleKeys.length > 0) {
-        html = '<div class="kv-list">' + simpleKeys.map(function (k) {
-          return '<div class="kv-row">' +
-            '<span class="kv-key">' + escapeHtml(formatLabel(k)) + '</span>' +
-            '<span class="kv-val">' + formatValue(obj[k]) + '</span>' +
-          '</div>';
-        }).join("") + '</div>' + html;
-      }
-
-      return html;
-    }
-
-    function renderInicio(seccion, payload) {
-      var data = payload || {};
-      var saludo = data.saludo || ("Sección: " + seccion);
-      var subtitulo = data.subtitulo || "Resumen general del sistema.";
-      var metricas = Array.isArray(data.metricas) ? data.metricas : [];
-      var alertas = Array.isArray(data.alertas) ? data.alertas : [];
-
-      var html =
-        '<div class="section-header">' +
-          '<h2 class="section-title">' + escapeHtml(saludo) + '</h2>' +
-          '<p class="section-subtitle">' + escapeHtml(subtitulo) + '</p>' +
-        '</div>';
-
-      if (metricas.length > 0) {
-        html += '<div class="cards-grid">';
-        for (var i = 0; i < metricas.length; i++) {
-          var m = metricas[i] || {};
-          var colorClass = ["blue", "orange", "red", "green"].indexOf(String(m.color || "").toLowerCase()) !== -1
-            ? String(m.color).toLowerCase()
-            : "blue";
-          html +=
-            '<div class="metric-card">' +
-              '<div class="metric-label">' + escapeHtml(m.titulo || "Métrica") + '</div>' +
-              '<div class="metric-value ' + colorClass + '">' + escapeHtml(m.valor) + '</div>' +
-            '</div>';
-        }
-        html += '</div>';
-      }
-
-      html +=
-        '<h3 style="margin:14px 0 4px 0;font-size:16px;">' +
-          escapeHtml(data.titulo_alertas || "Alertas de Inventario") +
-        '</h3>' +
-        '<p class="section-subtitle" style="margin-bottom:10px;">' +
-          escapeHtml(data.descripcion_alertas || "") +
-        '</p>';
-
-      if (alertas.length === 0) {
-        html += '<div class="empty-msg">No hay alertas pendientes por el momento.</div>';
-      } else {
-        for (var j = 0; j < alertas.length; j++) {
-          var a = alertas[j] || {};
-          var tituloAlerta = a.titulo || a.nombre || ("Producto " + (a.codigo || ""));
-          var subAlerta = a.subtitulo || ((a.descripcion || "") + (a.precio ? " | Precio: $" + a.precio : ""));
-          var badgeText = a.badge || (a.stock_str ? "¡Quedan " + a.stock_str + "!" : "Alerta");
-
-          html +=
-            '<div class="alert-card">' +
-              '<div>' +
-                '<div class="alert-title">' + escapeHtml(tituloAlerta) + '</div>' +
-                '<div class="alert-sub">' + escapeHtml(subAlerta) + '</div>' +
-              '</div>' +
-              '<span class="badge-danger">' + escapeHtml(badgeText) + '</span>' +
-            '</div>';
-        }
-      }
-
-      return html;
-    }
-
-    function renderSeccion(index, seccion, payload) {
-      if (index === 0) {
-        return renderInicio(seccion, payload);
-      }
-
-      var header =
-        '<div class="section-header">' +
-          '<h2 class="section-title">' + escapeHtml(seccion || "Sección") + '</h2>' +
-          '<p class="section-subtitle">Vista web adaptada para Easy Sale iPad.</p>' +
-        '</div>';
-
-      if (payload === null || payload === undefined) {
-        return header + '<div class="empty-msg">Sin datos disponibles para esta sección.</div>';
-      }
-
-      if (typeof payload === "object" && Object.keys(payload).length === 1 && payload.estado === "cargada") {
-        return header +
-          '<div class="empty-msg">La sección <strong>' + escapeHtml(seccion) + '</strong> está conectada y lista para cargar sus datos o controles interactivos.</div>';
-      }
-
-      if (Array.isArray(payload)) {
-        return header + renderTablaArray(payload);
-      }
-
-      if (typeof payload === "object") {
-        return header + renderDiccionario(payload);
-      }
-
-      return header + '<div class="empty-msg">' + escapeHtml(payload) + '</div>';
-    }
-
-    function renderLogin(errorText) {
-      var root = document.getElementById("app-root");
-      root.innerHTML =
-        '<div class="login-box">' +
-          '<h2 style="margin-top:0;">Iniciar Sesión - Easy Sale</h2>' +
-          '<div class="field"><label>Usuario</label><input type="text" id="txt-usuario"></div>' +
-          '<div class="field"><label>Contraseña</label><input type="password" id="txt-password"></div>' +
-          '<div id="lbl-error" class="error-msg">' + escapeHtml(errorText || "") + '</div>' +
-          '<button type="button" class="btn-primary" style="width:100%;" onclick="doLogin()">Ingresar</button>' +
-        '</div>';
-    }
-
-    function doLogin() {
-      var u = document.getElementById("txt-usuario").value;
-      var p = document.getElementById("txt-password").value;
-      var xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/login", true);
-      xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-      xhr.onreadystatechange = function () {
-        if (xhr.readyState === 4) {
-          var res = JSON.parse(xhr.responseText);
-          if (res.ok) {
-            usuarioActual = res.usuario;
-            vistaActual = 0;
-            renderDashboard();
-            cargarVista(0);
-          } else {
-            renderLogin(res.error);
-          }
-        }
-      };
-      xhr.send(JSON.stringify({ usuario: u, password: p }));
-    }
-
-    function doLogout() {
-      var xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/logout", true);
-      xhr.onreadystatechange = function () {
-        if (xhr.readyState === 4) {
-          usuarioActual = null;
-          renderLogin("");
-        }
+577
+578
+579
+580
+581
+582
+583
+584
+585
+586
+587
+588
+589
+590
+591
+592
+593
+594
+595
+596
+597
+598
+599
+600
+601
+602
+603
+604
+605
+606
+607
+608
+609
+610
+611
+612
+613
+614
+615
+616
+617
+618
+619
+620
+621
+622
+623
+624
+625
+626
+627
+628
+629
+630
+631
+632
+633
+634
+635
+636
+637
+638
+639
+640
+641
+642
+643
+644
+645
+646
+647
+648
+649
+650
+651
+652
+653
+654
+655
+656
+657
+658
+659
+660
+661
+662
+663
+664
+665
+666
+667
+668
+669
+670
+671
+672
+673
+674
+675
+676
+677
+678
+679
+680
+681
+682
+683
+684
+685
+686
+687
+688
+689
+690
+691
+692
+693
+694
+695
+696
+697
+698
+699
+700
+701
+702
+703
+704
+705
+706
+707
+708
+709
+710
+711
+712
+713
+714
+715
       };
       xhr.send();
     }
